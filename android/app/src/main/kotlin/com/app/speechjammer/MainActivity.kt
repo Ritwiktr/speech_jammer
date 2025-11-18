@@ -14,18 +14,26 @@ class MainActivity : FlutterActivity() {
         speechJammerChannel = SpeechJammerChannel()
         
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
+            val channel = speechJammerChannel
+            if (channel == null) {
+                result.error("UNAVAILABLE", "Speech jammer not available", null)
+                return@setMethodCallHandler
+            }
+            
             when (call.method) {
                 "start" -> {
                     val delayMs = call.argument<Int>("delayMs") ?: 200
-                    // Android native implementation not yet available
-                    // Return success to allow app to run
-                    result.success(true)
+                    val success = channel.start(delayMs)
+                    result.success(success)
                 }
                 "stop" -> {
-                    result.success(true)
+                    val success = channel.stop()
+                    result.success(success)
                 }
                 "updateDelay" -> {
-                    result.success(true)
+                    val delayMs = call.argument<Int>("delayMs") ?: 200
+                    val success = channel.updateDelay(delayMs)
+                    result.success(success)
                 }
                 else -> {
                     result.notImplemented()
