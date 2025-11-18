@@ -13,7 +13,7 @@ import UIKit
     
     // Setup Speech Jammer Method Channel
     let controller = window?.rootViewController as! FlutterViewController
-    let channel = FlutterMethodChannel(name: "com.example.speech_jammer/audio",
+    let channel = FlutterMethodChannel(name: "com.app.speechjammer/audio",
                                       binaryMessenger: controller.binaryMessenger)
     
     speechJammer = SpeechJammerChannel()

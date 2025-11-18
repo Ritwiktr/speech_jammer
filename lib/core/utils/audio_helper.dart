@@ -19,7 +19,7 @@ class AudioHelper {
       print('🔊 Configuring audio session...');
       final session = await AudioSession.instance;
       print('🔊 Got audio session instance');
-      
+
       await session.configure(const AudioSessionConfiguration.speech());
       print('🔊 Audio session configured');
     } catch (e) {

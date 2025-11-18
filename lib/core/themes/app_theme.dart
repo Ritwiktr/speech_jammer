@@ -3,11 +3,9 @@ import 'package:flutter/material.dart';
 class AppTheme {
   // Modern color scheme for light mode
   static const _lightPrimary = Color(0xFF6750A4);
-  static const _lightSecondary = Color(0xFF625B71);
 
   // Modern color scheme for dark mode
   static const _darkPrimary = Color(0xFFD0BCFF);
-  static const _darkSecondary = Color(0xFFCCC2DC);
 
   static ThemeData get lightTheme {
     return ThemeData(

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:provider/provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/widgets/custom_button.dart';
 import '../../../core/widgets/info_card.dart';
@@ -17,8 +18,6 @@ class HomeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Speech Jammer'),
-        centerTitle: true,
         elevation: 0,
         actions: [
           Consumer<ThemeController>(
@@ -94,6 +93,14 @@ class HomeScreen extends StatelessWidget {
               SnackBar(
                 content: Text(state.message),
                 backgroundColor: Colors.red,
+                action: SnackBarAction(
+                  label: 'Settings',
+                  textColor: Colors.white,
+                  onPressed: () async {
+                    await openAppSettings();
+                  },
+                ),
+                duration: const Duration(seconds: 5),
               ),
             );
           } else if (state is SpeechJammerReady) {
@@ -106,6 +113,14 @@ class HomeScreen extends StatelessWidget {
                 SnackBar(
                   content: Text(state.model.errorMessage!),
                   backgroundColor: Colors.orange,
+                  action: SnackBarAction(
+                    label: 'Settings',
+                    textColor: Colors.white,
+                    onPressed: () async {
+                      await openAppSettings();
+                    },
+                  ),
+                  duration: const Duration(seconds: 5),
                 ),
               );
             }

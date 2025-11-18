@@ -31,9 +31,21 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.0
+  flutter_launcher_icons: ^0.14.4
 
 dependency_overrides:
   record_linux: ^1.0.0
 
 flutter:
   uses-material-design: true
+  
+  assets:
+    - assets/sjlogo.png
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/sjlogo.png"
+  remove_alpha_ios: true
+  adaptive_icon_background: "#1C1B1F"
+  adaptive_icon_foreground: "assets/sjlogo.png"

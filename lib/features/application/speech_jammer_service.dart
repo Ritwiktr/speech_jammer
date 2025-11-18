@@ -10,11 +10,11 @@ import '../../core/constants/app_constants.dart';
 
 class SpeechJammerService {
   // Platform channel for native audio processing
-  static const platform = MethodChannel('com.example.speech_jammer/audio');
-  
+  static const platform = MethodChannel('com.app.speechjammer/audio');
+
   final AudioRecorder _recorder = AudioRecorder();
   final AudioPlayer _player = AudioPlayer();
-  
+
   bool _isActive = false;
   int _currentDelayMs = AppConstants.defaultDelayMs;
   String? _recordingPath;
@@ -27,12 +27,31 @@ class SpeechJammerService {
   Future<bool> initialize() async {
     try {
       await AudioHelper.configureAudioSession();
-      final hasMicPermission = await PermissionHelper.requestMicrophonePermission();
-      print('🎤 Microphone permission: $hasMicPermission');
-      return hasMicPermission;
+      
+      // Try record package's permission first (often triggers system dialog better)
+      final recorderHasPermission = await _recorder.hasPermission();
+      print('🎤 Recorder permission check: $recorderHasPermission');
+      
+      if (!recorderHasPermission) {
+        // Try permission_handler as fallback
+        final permissionGranted = await PermissionHelper.requestMicrophonePermission();
+        print('🎤 Permission handler result: $permissionGranted');
+        
+        if (!permissionGranted) {
+          final isPermanentlyDenied = await PermissionHelper.isMicrophonePermissionPermanentlyDenied();
+          if (isPermanentlyDenied) {
+            throw Exception('Microphone permission was denied. Please enable it in Settings > Privacy & Security > Microphone.');
+          } else {
+            throw Exception('Microphone permission is required to use this app.');
+          }
+        }
+      }
+      
+      print('✅ Microphone permission granted');
+      return true;
     } catch (e) {
       print('❌ Error initializing: $e');
-      return false;
+      rethrow;
     }
   }
 
@@ -46,21 +65,22 @@ class SpeechJammerService {
     _currentDelayMs = delayMs;
 
     try {
-      print('🎯 Starting native speech jammer with ${delayMs}ms delay...');
-      
-      // Call native iOS code for real-time audio processing
+      print('🎯 Starting speech jammer with ${delayMs}ms delay...');
+
+      // Try native implementation first (iOS has real implementation)
       final result = await platform.invokeMethod('start', {
         'delayMs': delayMs,
       });
-      
+
       if (result == true) {
         _isActive = true;
-        print('✅ Native speech jammer started successfully!');
+        print('✅ Speech jammer started!');
       } else {
-        throw Exception('Failed to start native audio engine');
+        throw Exception('Failed to start audio engine');
       }
     } on PlatformException catch (e) {
-      print('❌ Platform error: ${e.message}');
+      print('⚠️ Platform implementation not available: ${e.message}');
+      print('📱 Note: Full native audio on Android coming soon!');
       _isActive = false;
       rethrow;
     } catch (e) {
@@ -75,10 +95,10 @@ class SpeechJammerService {
 
     try {
       print('⏹️ Stopping native speech jammer...');
-      
+
       // Call native iOS code to stop
       final result = await platform.invokeMethod('stop');
-      
+
       if (result == true) {
         _isActive = false;
         print('✅ Native speech jammer stopped');
@@ -92,16 +112,16 @@ class SpeechJammerService {
 
   Future<void> updateDelay(int delayMs) async {
     _currentDelayMs = delayMs;
-    
+
     if (_isActive) {
       try {
         print('🔄 Updating delay to ${delayMs}ms...');
-        
+
         // Call native code to update delay
         await platform.invokeMethod('updateDelay', {
           'delayMs': delayMs,
         });
-        
+
         print('✅ Delay updated');
       } on PlatformException catch (e) {
         print('❌ Platform error updating delay: ${e.message}');
@@ -120,7 +140,8 @@ class SpeechJammerService {
 
       final directory = await getApplicationDocumentsDirectory();
       final timestamp = DateTime.now().millisecondsSinceEpoch;
-      _recordingPath = '${directory.path}/${AppConstants.recordingPrefix}$timestamp${AppConstants.recordingExtension}';
+      _recordingPath =
+          '${directory.path}/${AppConstants.recordingPrefix}$timestamp${AppConstants.recordingExtension}';
 
       await _recorder.start(
         const RecordConfig(
@@ -145,11 +166,10 @@ class SpeechJammerService {
     try {
       final directory = await getApplicationDocumentsDirectory();
       final files = directory.listSync();
-      
+
       return files
-          .where((file) => 
-              file is File && 
-              file.path.contains(AppConstants.recordingPrefix))
+          .where((file) =>
+              file is File && file.path.contains(AppConstants.recordingPrefix))
           .map((file) => file.path)
           .toList();
     } catch (e) {
@@ -163,4 +183,3 @@ class SpeechJammerService {
     _delayTimer?.cancel();
   }
 }
-
