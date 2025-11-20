@@ -7,6 +7,10 @@ import android.media.AudioManager
 import android.media.MediaRecorder
 import android.util.Log
 import kotlin.concurrent.thread
+import java.io.File
+import java.io.FileOutputStream
+import java.io.FileInputStream
+import java.io.RandomAccessFile
 
 class SpeechJammerChannel {
     private val TAG = "SpeechJammerChannel"
@@ -21,6 +25,12 @@ class SpeechJammerChannel {
     private var bufferSize: Int = 0
     private var writeIndex: Int = 0
     private var readIndex: Int = 0
+    
+    // Recording
+    private var isRecording = false
+    private var recordingFile: File? = null
+    private var recordingTempFile: File? = null
+    private var recordingOutputStream: FileOutputStream? = null
     
     private val sampleRate = 44100
     private val channelConfig = AudioFormat.CHANNEL_IN_MONO
@@ -135,7 +145,21 @@ class SpeechJammerChannel {
                 val readCount = audioRecord?.read(audioBuffer, 0, bufferSize) ?: 0
                 
                 if (readCount > 0) {
-                    // Process each sample
+                    // Save original audio if recording (write directly to file to avoid memory issues)
+                    if (isRecording && recordingOutputStream != null) {
+                        try {
+                            for (i in 0 until readCount) {
+                                // Write 16-bit sample in little-endian format
+                                val sample = audioBuffer[i].toInt()
+                                recordingOutputStream?.write(sample and 0xFF)
+                                recordingOutputStream?.write((sample shr 8) and 0xFF)
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error writing audio data: ${e.message}")
+                        }
+                    }
+                    
+                    // Process each sample for delayed feedback
                     for (i in 0 until readCount) {
                         // Convert to float (-1.0 to 1.0)
                         val sample = audioBuffer[i].toFloat() / Short.MAX_VALUE.toFloat()
@@ -199,8 +223,147 @@ class SpeechJammerChannel {
         return true
     }
     
+    fun startRecording(filePath: String): Boolean {
+        if (!isRunning) {
+            Log.e(TAG, "Cannot start recording - jammer is not running")
+            return false
+        }
+        
+        if (isRecording) {
+            Log.d(TAG, "Already recording")
+            return true
+        }
+        
+        try {
+            recordingFile = File(filePath)
+            // Create temp file for raw PCM data
+            recordingTempFile = File(filePath + ".tmp")
+            recordingOutputStream = FileOutputStream(recordingTempFile)
+            isRecording = true
+            Log.d(TAG, "🎙️ Recording started to: $filePath")
+            return true
+        } catch (e: Exception) {
+            Log.e(TAG, "Error starting recording: ${e.message}", e)
+            isRecording = false
+            recordingOutputStream?.close()
+            recordingOutputStream = null
+            recordingTempFile?.delete()
+            recordingTempFile = null
+            return false
+        }
+    }
+    
+    fun stopRecording(): String? {
+        if (!isRecording) {
+            Log.d(TAG, "Not recording")
+            return null
+        }
+        
+        isRecording = false
+        
+        try {
+            // Close the output stream
+            recordingOutputStream?.flush()
+            recordingOutputStream?.close()
+            recordingOutputStream = null
+            
+            val file = recordingFile ?: return null
+            val tempFile = recordingTempFile ?: return null
+            
+            if (!tempFile.exists()) {
+                Log.e(TAG, "Temp file doesn't exist")
+                return null
+            }
+            
+            val dataSize = tempFile.length().toInt()
+            val sampleCount = dataSize / 2
+            
+            Log.d(TAG, "💾 Converting PCM to WAV: $sampleCount samples ($dataSize bytes)...")
+            
+            // Write WAV file by streaming data without loading all into memory
+            RandomAccessFile(file, "rw").use { wavFile ->
+                val channels = 1
+                val bitsPerSample = 16
+                val byteRate = sampleRate * channels * bitsPerSample / 8
+                
+                // Write WAV header
+                wavFile.writeBytes("RIFF")
+                writeIntLE(wavFile, 36 + dataSize)
+                wavFile.writeBytes("WAVE")
+                
+                // fmt chunk
+                wavFile.writeBytes("fmt ")
+                writeIntLE(wavFile, 16)
+                writeShortLE(wavFile, 1) // PCM
+                writeShortLE(wavFile, channels)
+                writeIntLE(wavFile, sampleRate)
+                writeIntLE(wavFile, byteRate)
+                writeShortLE(wavFile, channels * bitsPerSample / 8)
+                writeShortLE(wavFile, bitsPerSample)
+                
+                // data chunk
+                wavFile.writeBytes("data")
+                writeIntLE(wavFile, dataSize)
+                
+                // Copy PCM data from temp file in chunks (no memory load!)
+                FileInputStream(tempFile).use { input ->
+                    val buffer = ByteArray(8192) // 8KB chunks
+                    var bytesRead: Int
+                    while (input.read(buffer).also { bytesRead = it } != -1) {
+                        wavFile.write(buffer, 0, bytesRead)
+                    }
+                }
+            }
+            
+            // Clean up temp file
+            tempFile.delete()
+            recordingTempFile = null
+            
+            val path = file.absolutePath
+            recordingFile = null
+            
+            Log.d(TAG, "✅ Recording saved to: $path (${File(path).length() / 1024} KB)")
+            return path
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping recording: ${e.message}", e)
+            recordingOutputStream?.close()
+            recordingOutputStream = null
+            recordingTempFile?.delete()
+            recordingTempFile = null
+            recordingFile = null
+            return null
+        }
+    }
+    
+    // Helper function to write 16-bit little-endian
+    private fun writeShortLE(raf: RandomAccessFile, value: Int) {
+        raf.write(value and 0xFF)
+        raf.write((value shr 8) and 0xFF)
+    }
+    
+    // Helper function to write 32-bit little-endian
+    private fun writeIntLE(raf: RandomAccessFile, value: Int) {
+        raf.write(value and 0xFF)
+        raf.write((value shr 8) and 0xFF)
+        raf.write((value shr 16) and 0xFF)
+        raf.write((value shr 24) and 0xFF)
+    }
+    
     private fun cleanup() {
         try {
+            // Stop recording if active
+            if (isRecording) {
+                stopRecording()
+            }
+            
+            // Clean up any leftover recording resources
+            recordingOutputStream?.close()
+            recordingOutputStream = null
+            recordingTempFile?.delete()
+            recordingTempFile = null
+            recordingFile = null
+            
             audioRecord?.stop()
             audioRecord?.release()
             audioRecord = null

@@ -117,16 +117,25 @@ class SpeechJammerBloc extends Bloc<SpeechJammerEvent, SpeechJammerState> {
     Emitter<SpeechJammerState> emit,
   ) async {
     try {
+      print('📝 Bloc: Starting recording...');
       final path = await speechJammerService.startRecording();
       if (path != null) {
         _currentModel = _currentModel.copyWith(
           isRecording: true,
           recordingPath: path,
+          errorMessage: null, // Clear any previous errors
         );
         emit(SpeechJammerReady(_currentModel));
+        print('✅ Bloc: Recording started');
+      } else {
+        throw Exception('Failed to start recording - no path returned');
       }
     } catch (e) {
-      _currentModel = _currentModel.copyWith(errorMessage: e.toString());
+      print('❌ Bloc: Error starting recording: $e');
+      _currentModel = _currentModel.copyWith(
+        isRecording: false,
+        errorMessage: 'Failed to start recording: ${e.toString()}',
+      );
       emit(SpeechJammerReady(_currentModel));
     }
   }
@@ -136,11 +145,20 @@ class SpeechJammerBloc extends Bloc<SpeechJammerEvent, SpeechJammerState> {
     Emitter<SpeechJammerState> emit,
   ) async {
     try {
+      print('📝 Bloc: Stopping recording...');
       await speechJammerService.stopRecording();
-      _currentModel = _currentModel.copyWith(isRecording: false);
+      _currentModel = _currentModel.copyWith(
+        isRecording: false,
+        errorMessage: null, // Clear any errors
+      );
       emit(SpeechJammerReady(_currentModel));
+      print('✅ Bloc: Recording stopped');
     } catch (e) {
-      _currentModel = _currentModel.copyWith(errorMessage: e.toString());
+      print('❌ Bloc: Error stopping recording: $e');
+      _currentModel = _currentModel.copyWith(
+        isRecording: false,
+        errorMessage: 'Failed to stop recording: ${e.toString()}',
+      );
       emit(SpeechJammerReady(_currentModel));
     }
   }

@@ -32,8 +32,27 @@ class PermissionHelper {
   }
 
   static Future<bool> requestStoragePermission() async {
-    final status = await Permission.storage.request();
-    return status.isGranted || status.isLimited;
+    // On Android 13+ (API 33+), storage permission is deprecated
+    // Apps have automatic access to their own app directory
+    // For saving recordings to app directory, no permission needed
+    try {
+      if (await Permission.storage.isGranted ||
+          await Permission.storage.isLimited) {
+        return true;
+      }
+
+      // On older Android versions, request storage permission
+      final status = await Permission.storage.request();
+
+      // If storage permission is denied but we're on newer Android, still allow
+      // since we're only writing to app's own directory
+      return status.isGranted || status.isLimited || status.isDenied;
+    } catch (e) {
+      // If storage permission throws an error (e.g., on API 33+),
+      // assume we can still write to app directory
+      print('📱 Storage permission check failed (expected on Android 13+): $e');
+      return true;
+    }
   }
 
   static Future<bool> checkMicrophonePermission() async {
@@ -42,7 +61,12 @@ class PermissionHelper {
   }
 
   static Future<bool> checkStoragePermission() async {
-    final status = await Permission.storage.status;
-    return status.isGranted || status.isLimited;
+    try {
+      final status = await Permission.storage.status;
+      return status.isGranted || status.isLimited;
+    } catch (e) {
+      // On newer Android versions where storage permission is deprecated
+      return true;
+    }
   }
 }

@@ -10,6 +10,7 @@ import '../../domain/models/jammer_state_model.dart';
 import '../bloc/speech_jammer_bloc.dart';
 import '../bloc/speech_jammer_event.dart';
 import '../bloc/speech_jammer_state.dart';
+import 'recordings_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -20,6 +21,18 @@ class HomeScreen extends StatelessWidget {
       appBar: AppBar(
         elevation: 0,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.folder_open),
+            tooltip: 'Recordings',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const RecordingsScreen(),
+                ),
+              );
+            },
+          ),
           Consumer<ThemeController>(
             builder: (context, themeController, _) {
               return PopupMenuButton<ThemeMode>(
@@ -280,25 +293,34 @@ class HomeScreen extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                ElevatedButton.icon(
-                  onPressed: isActive
-                      ? () {
-                          final bloc = context.read<SpeechJammerBloc>();
-                          if (model.isRecording) {
-                            bloc.add(StopRecording());
-                          } else {
-                            bloc.add(StartRecording());
+                Tooltip(
+                  message: isActive
+                      ? (model.isRecording
+                          ? 'Stop recording'
+                          : 'Start recording session')
+                      : 'Start the jammer first to record',
+                  child: ElevatedButton.icon(
+                    onPressed: isActive
+                        ? () {
+                            final bloc = context.read<SpeechJammerBloc>();
+                            if (model.isRecording) {
+                              bloc.add(StopRecording());
+                            } else {
+                              bloc.add(StartRecording());
+                            }
                           }
-                        }
-                      : null,
-                  icon: Icon(
-                    model.isRecording ? Icons.stop : Icons.fiber_manual_record,
-                  ),
-                  label: Text(
-                    model.isRecording ? 'Stop Recording' : 'Record Session',
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: model.isRecording ? Colors.red : null,
+                        : null,
+                    icon: Icon(
+                      model.isRecording
+                          ? Icons.stop
+                          : Icons.fiber_manual_record,
+                    ),
+                    label: Text(
+                      model.isRecording ? 'Stop Recording' : 'Record Session',
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: model.isRecording ? Colors.red : null,
+                    ),
                   ),
                 ),
               ],

@@ -27,26 +27,30 @@ class SpeechJammerService {
   Future<bool> initialize() async {
     try {
       await AudioHelper.configureAudioSession();
-      
+
       // Try record package's permission first (often triggers system dialog better)
       final recorderHasPermission = await _recorder.hasPermission();
       print('🎤 Recorder permission check: $recorderHasPermission');
-      
+
       if (!recorderHasPermission) {
         // Try permission_handler as fallback
-        final permissionGranted = await PermissionHelper.requestMicrophonePermission();
+        final permissionGranted =
+            await PermissionHelper.requestMicrophonePermission();
         print('🎤 Permission handler result: $permissionGranted');
-        
+
         if (!permissionGranted) {
-          final isPermanentlyDenied = await PermissionHelper.isMicrophonePermissionPermanentlyDenied();
+          final isPermanentlyDenied =
+              await PermissionHelper.isMicrophonePermissionPermanentlyDenied();
           if (isPermanentlyDenied) {
-            throw Exception('Microphone permission was denied. Please enable it in Settings > Privacy & Security > Microphone.');
+            throw Exception(
+                'Microphone permission was denied. Please enable it in Settings > Privacy & Security > Microphone.');
           } else {
-            throw Exception('Microphone permission is required to use this app.');
+            throw Exception(
+                'Microphone permission is required to use this app.');
           }
         }
       }
-      
+
       print('✅ Microphone permission granted');
       return true;
     } catch (e) {
@@ -133,33 +137,78 @@ class SpeechJammerService {
 
   Future<String?> startRecording() async {
     try {
+      print('🎙️ Starting recording...');
+      
+      if (!_isActive) {
+        throw Exception('Jammer must be active to record');
+      }
+      
       final hasPermission = await PermissionHelper.requestStoragePermission();
+      print('📁 Storage permission granted: $hasPermission');
+      
       if (!hasPermission) {
         throw Exception('Storage permission not granted');
       }
 
       final directory = await getApplicationDocumentsDirectory();
       final timestamp = DateTime.now().millisecondsSinceEpoch;
-      _recordingPath =
-          '${directory.path}/${AppConstants.recordingPrefix}$timestamp${AppConstants.recordingExtension}';
+      
+      // Use .wav extension for Android native recording, .m4a for iOS
+      final extension = Platform.isAndroid ? '.wav' : AppConstants.recordingExtension;
+      _recordingPath = '${directory.path}/${AppConstants.recordingPrefix}$timestamp$extension';
 
-      await _recorder.start(
-        const RecordConfig(
-          encoder: AudioEncoder.aacLc,
-          sampleRate: AppConstants.sampleRate,
-        ),
-        path: _recordingPath!,
-      );
+      print('💾 Recording to: $_recordingPath');
 
+      if (Platform.isAndroid) {
+        // Use native recording on Android to avoid AudioRecord conflict
+        print('🤖 Using native Android recording');
+        final result = await platform.invokeMethod('startRecording', {
+          'filePath': _recordingPath,
+        });
+        
+        if (result != true) {
+          throw Exception('Native recording failed to start');
+        }
+      } else {
+        // Use record package on iOS and other platforms
+        print('🍎 Using record package');
+        await _recorder.start(
+          const RecordConfig(
+            encoder: AudioEncoder.aacLc,
+            sampleRate: AppConstants.sampleRate,
+          ),
+          path: _recordingPath!,
+        );
+      }
+
+      print('✅ Recording started successfully');
       return _recordingPath;
     } catch (e) {
+      print('❌ Error starting recording: $e');
       _recordingPath = null;
-      return null;
+      rethrow; // Rethrow to let the bloc handle the error
     }
   }
 
   Future<void> stopRecording() async {
-    await _recorder.stop();
+    try {
+      print('🛑 Stopping recording...');
+      
+      if (Platform.isAndroid) {
+        // Use native recording on Android
+        print('🤖 Stopping native Android recording');
+        final path = await platform.invokeMethod('stopRecording');
+        print('✅ Recording stopped. Saved at: $path');
+      } else {
+        // Use record package on iOS and other platforms
+        print('🍎 Stopping record package recording');
+        final path = await _recorder.stop();
+        print('✅ Recording stopped. Saved at: $path');
+      }
+    } catch (e) {
+      print('❌ Error stopping recording: $e');
+      rethrow;
+    }
   }
 
   Future<List<String>> getSavedRecordings() async {
@@ -169,7 +218,9 @@ class SpeechJammerService {
 
       return files
           .where((file) =>
-              file is File && file.path.contains(AppConstants.recordingPrefix))
+              file is File && 
+              file.path.contains(AppConstants.recordingPrefix) &&
+              (file.path.endsWith('.wav') || file.path.endsWith('.m4a')))
           .map((file) => file.path)
           .toList();
     } catch (e) {
